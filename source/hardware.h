@@ -22,6 +22,8 @@ union Register{
     };
 };
 
+extern BYTE Cartridge[0x200000];
+extern BYTE rom[0x10000];
 
 
 
