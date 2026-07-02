@@ -1,6 +1,6 @@
 #include "utils.h"
 #include "hardware.h"
-#include "rom.h"
+#include "memory.h"
 #include "CPU.h"
 
 int main(int argc, char **argv){

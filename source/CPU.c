@@ -1,8 +1,10 @@
 #include "hardware.h"
 #include "utils.h"
+#include "memory.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 
 
@@ -12,6 +14,9 @@ union Register register_DE;
 union Register register_HL;
 union Register sp;
 WORD pc;
+
+#define SET_FLAG(x) (register_AF.lo |= (x))
+#define CLEAR_FLAG(x) (register_AF.lo &= ~(x))
 
 BYTE screen[160][144];
 
@@ -28,10 +33,40 @@ void not_implemented() {
     exit(0);
 }
 
+BYTE inc(BYTE value){
+    if((value & 0x0f) == 0x0f) SET_FLAG(FLAG_H);
+    else CLEAR_FLAG(FLAG_H);
+
+    value++;
+
+    if(value != 0) CLEAR_FLAG(FLAG_Z);
+    else SET_FLAG(FLAG_Z);
+
+    CLEAR_FLAG(FLAG_N);
+
+    return value;
+}
+
+// 0x00
+void nop(){
+    return;
+}
+
+// 0x02
+void ld_bc_a(){ write_byte(register_BC.full, register_AF.hi); }
+
+// 0x0C
+void inc_c(){ register_BC.lo = inc(register_BC.lo); }
+
+// 0xC3
+void jp_a16(WORD operand){ pc = operand; }
+
+
+
 struct Instruction unprefixed_instructions[256] = {
-    [0x00] = {"NOP", 1, 4, true, not_implemented},
+    [0x00] = {"NOP", 1, 4, true, nop},
     [0x01] = {"LD BC", 3, 12, true, not_implemented},
-    [0x02] = {"LD BC", 1, 8, false, not_implemented},
+    [0x02] = {"LD BC", 1, 8, false, ld_bc_a},
     [0x03] = {"INC BC", 1, 8, true, not_implemented},
     [0x04] = {"INC B", 1, 4, true, not_implemented},
     [0x05] = {"DEC B", 1, 4, true, not_implemented},
@@ -41,7 +76,7 @@ struct Instruction unprefixed_instructions[256] = {
     [0x09] = {"ADD HL", 1, 8, true, not_implemented},
     [0x0A] = {"LD A", 1, 8, false, not_implemented},
     [0x0B] = {"DEC BC", 1, 8, true, not_implemented},
-    [0x0C] = {"INC C", 1, 4, true, not_implemented},
+    [0x0C] = {"INC C", 1, 4, true, inc_c},
     [0x0D] = {"DEC C", 1, 4, true, not_implemented},
     [0x0E] = {"LD C", 2, 8, true, not_implemented},
     [0x0F] = {"RRCA", 1, 4, true, not_implemented},
@@ -224,7 +259,7 @@ struct Instruction unprefixed_instructions[256] = {
     [0xC0] = {"RET NZ", 1, 20, true, not_implemented},
     [0xC1] = {"POP BC", 1, 12, true, not_implemented},
     [0xC2] = {"JP NZ", 3, 16, true, not_implemented},
-    [0xC3] = {"JP a16", 3, 16, true, not_implemented},
+    [0xC3] = {"JP a16", 3, 16, true, jp_a16},
     [0xC4] = {"CALL NZ", 3, 24, true, not_implemented},
     [0xC5] = {"PUSH BC", 1, 16, true, not_implemented},
     [0xC6] = {"ADD A", 2, 8, true, not_implemented},
@@ -548,7 +583,6 @@ struct Instruction prefixed_instructions[256] = {
 
 void init_cpu(){
     BYTE Cartridge[0x200000];
-    BYTE rom[0x10000] = {0};
 
     register_AF.full = 0x01B0;
     register_BC.full = 0x0013;
@@ -559,62 +593,79 @@ void init_cpu(){
 
     pc = 0x100;
  
-    rom[0xFF05] = 0x00 ;
-    rom[0xFF06] = 0x00 ;
-    rom[0xFF07] = 0x00 ;
-    rom[0xFF10] = 0x80 ;
-    rom[0xFF11] = 0xBF ;
-    rom[0xFF12] = 0xF3 ;
-    rom[0xFF14] = 0xBF ;
-    rom[0xFF16] = 0x3F ;
-    rom[0xFF17] = 0x00 ;
-    rom[0xFF19] = 0xBF ;
-    rom[0xFF1A] = 0x7F ;
-    rom[0xFF1B] = 0xFF ;
-    rom[0xFF1C] = 0x9F ;
-    rom[0xFF1E] = 0xBF ;
-    rom[0xFF20] = 0xFF ;
-    rom[0xFF21] = 0x00 ;
-    rom[0xFF22] = 0x00 ;
-    rom[0xFF23] = 0xBF ;
-    rom[0xFF24] = 0x77 ;
-    rom[0xFF25] = 0xF3 ;
-    rom[0xFF26] = 0xF1 ;
-    rom[0xFF40] = 0x91 ;
-    rom[0xFF42] = 0x00 ;
-    rom[0xFF43] = 0x00 ;
-    rom[0xFF45] = 0x00 ;
-    rom[0xFF47] = 0xFC ;
-    rom[0xFF48] = 0xFF ;
-    rom[0xFF49] = 0xFF ;
-    rom[0xFF4A] = 0x00 ;
-    rom[0xFF4B] = 0x00 ;
-    rom[0xFFFF] = 0x00 ; 
+    Cartridge[0xFF05] = 0x00 ;
+    Cartridge[0xFF06] = 0x00 ;
+    Cartridge[0xFF07] = 0x00 ;
+    Cartridge[0xFF10] = 0x80 ;
+    Cartridge[0xFF11] = 0xBF ;
+    Cartridge[0xFF12] = 0xF3 ;
+    Cartridge[0xFF14] = 0xBF ;
+    Cartridge[0xFF16] = 0x3F ;
+    Cartridge[0xFF17] = 0x00 ;
+    Cartridge[0xFF19] = 0xBF ;
+    Cartridge[0xFF1A] = 0x7F ;
+    Cartridge[0xFF1B] = 0xFF ;
+    Cartridge[0xFF1C] = 0x9F ;
+    Cartridge[0xFF1E] = 0xBF ;
+    Cartridge[0xFF20] = 0xFF ;
+    Cartridge[0xFF21] = 0x00 ;
+    Cartridge[0xFF22] = 0x00 ;
+    Cartridge[0xFF23] = 0xBF ;
+    Cartridge[0xFF24] = 0x77 ;
+    Cartridge[0xFF25] = 0xF3 ;
+    Cartridge[0xFF26] = 0xF1 ;
+    Cartridge[0xFF40] = 0x91 ;
+    Cartridge[0xFF42] = 0x00 ;
+    Cartridge[0xFF43] = 0x00 ;
+    Cartridge[0xFF45] = 0x00 ;
+    Cartridge[0xFF47] = 0xFC ;
+    Cartridge[0xFF48] = 0xFF ;
+    Cartridge[0xFF49] = 0xFF ;
+    Cartridge[0xFF4A] = 0x00 ;
+    Cartridge[0xFF4B] = 0x00 ;
+    Cartridge[0xFFFF] = 0x00 ; 
 }
 
 void cpu_step(){
-    BYTE instruction = rom[pc];
+    BYTE instruction = read_byte(pc);
+    pc += 1;
     WORD operand = 0;
     int prefixed = 0;
-    if (instruction == 0xCB) prefixed = 1;
-    pc += 1;
+    if (instruction == 0xCB) {
+        prefixed = 1;
+        pc += 1;
+        instruction = read_byte(pc);
+    }    
+    
 
 
     if(!prefixed){
         if(unprefixed_instructions[instruction].bytes == 2){
-            operand = rom[pc];
+            operand = read_byte(pc);
+            LOG_I("[EXECUTING] $%x | [0x%x]  %s $%x ", pc - 1, instruction, unprefixed_instructions[instruction].mnemonic, operand);
+            ((void (*)(BYTE))unprefixed_instructions[instruction].execute)((BYTE) operand);
+            return;
         }
-        if(unprefixed_instructions[instruction].bytes == 3){
-            operand = rom[pc] | rom[pc + 1] << 8;
+        else if(unprefixed_instructions[instruction].bytes == 3){
+            operand = read_byte(pc) | read_byte(pc + 1) << 8;
+            LOG_I("[EXECUTING] $%x | [0x%x]  %s $%x ", pc - 1, instruction, unprefixed_instructions[instruction].mnemonic, operand);
+            ((void (*)(WORD))unprefixed_instructions[instruction].execute)(operand);
+            return;
         }
-        LOG_I("[EXECUTING] 0x%x | %s", instruction, unprefixed_instructions[instruction].mnemonic);
+        
+        LOG_I("[EXECUTING] $%x | [0x%x]  %s ", pc - 1, instruction, unprefixed_instructions[instruction].mnemonic);
         ((void (*)(void))unprefixed_instructions[instruction].execute)();
+        return;
+        
+    }
+
+    if(prefixed){  
+        operand = read_byte(pc);
+        
+        LOG_I("[EXECUTING] CB 0x%x | %s", instruction, prefixed_instructions[instruction].mnemonic);
+        ((void (*)(BYTE))prefixed_instructions[instruction].execute)(operand);
     }
     
-    
-}
-
-void WriteToMemory(WORD address, BYTE data){
     
 }
 
