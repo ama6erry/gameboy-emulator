@@ -4,7 +4,7 @@
 #include "CPU.h"
 
 int main(int argc, char **argv){
-    char *fileDest = "test_roms/tetris.gb";
+    char *fileDest = "test_roms/PokemonRed.gb";
     
     init_cpu();
     load_rom(fileDest);
