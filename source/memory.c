@@ -38,7 +38,7 @@ void load_rom(const char *name){
 
     char title[17];
 
-    memset(title, '\0', 17); //Tile is max 16 characters
+    memset(title, '\0', 17); //Tile is max 17 characters
 
     for(int i = 0; i < 16; i++){
         if(Cartridge[i + 0x134] == 0x80 || Cartridge[0x134 + i] == 0xc0) title[i] = '\0';
