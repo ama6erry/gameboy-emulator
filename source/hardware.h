@@ -5,10 +5,11 @@ typedef char SIGNED_BYTE;
 typedef unsigned short WORD;
 typedef short SIGNED_WORD;
 
-#define FLAG_Z 0b01000000
-#define FLAG_N 0b00100000
-#define FLAG_H 0b00010000
-#define FLAG_C 0b00001000
+//flag masks
+#define FLAG_Z 0b10000000
+#define FLAG_N 0b01000000
+#define FLAG_H 0b00100000
+#define FLAG_C 0b00010000
 
 #define BLACK 0b000000001
 #define DARK_GREY 0b00000010

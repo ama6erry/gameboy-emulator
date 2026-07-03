@@ -6,8 +6,6 @@
 #include <stdbool.h>
 #include <unistd.h>
 
-
-
 union Register register_AF;
 union Register register_BC;
 union Register register_DE;
@@ -30,19 +28,32 @@ struct Instruction {
 
 void not_implemented() {
     LOG_E("This instruction is not yet implemented");
-    exit(0);
 }
 
 BYTE inc(BYTE value){
     if((value & 0x0f) == 0x0f) SET_FLAG(FLAG_H);
     else CLEAR_FLAG(FLAG_H);
 
-    value++;
+    value += 1;
 
     if(value != 0) CLEAR_FLAG(FLAG_Z);
     else SET_FLAG(FLAG_Z);
 
     CLEAR_FLAG(FLAG_N);
+
+    return value;
+}
+
+BYTE dec(BYTE value){
+    if(value & 0x0f) CLEAR_FLAG(FLAG_H);
+    else SET_FLAG(FLAG_H);
+
+    value -= 1;
+
+    if(value) CLEAR_FLAG(FLAG_Z);
+    else SET_FLAG(FLAG_Z);
+
+    SET_FLAG(FLAG_N);
 
     return value;
 }
@@ -55,11 +66,43 @@ void nop(){
 // 0x02
 void ld_bc_a(){ write_byte(register_BC.full, register_AF.hi); }
 
+// 0x05
+void dec_b(){ register_BC.hi = dec(register_BC.hi); }
+
+// 0x06
+void ld_b_n8(BYTE operand) { register_BC.hi = operand; pc += 1; }
+
 // 0x0C
 void inc_c(){ register_BC.lo = inc(register_BC.lo); }
 
+// 0x0E
+void ld_c_n8(BYTE operand){ register_BC.lo = operand; pc += 1; }
+
+
+// 0x20
+void jr_nz_e8(BYTE operand){
+    pc += 1;
+    BYTE z = register_AF.lo & FLAG_Z;
+    if(!z){
+        SIGNED_BYTE newOp = (SIGNED_BYTE) operand;
+        pc += newOp;
+    }
+}
+
+// 0x21
+void ld_hl_n16(WORD operand){ register_HL.full = operand; pc += 2; }
+
+// 0x32
+void ld_hld_a() { write_byte(register_HL.full, register_AF.hi); register_HL.full -= 1; }
+
 // 0xAF
-void xor_a_a(){ register_AF.hi = register_AF.hi ^ register_AF.hi;}
+void xor_a_a(){ 
+    register_AF.hi = register_AF.hi ^ register_AF.hi; 
+    if (register_AF.hi == 0) SET_FLAG(FLAG_Z); 
+    CLEAR_FLAG(FLAG_C);
+    CLEAR_FLAG(FLAG_H);
+    CLEAR_FLAG(FLAG_N);
+}
 
 // 0xC3
 void jp_a16(WORD operand){ pc = operand; }
@@ -70,8 +113,8 @@ struct Instruction unprefixed_instructions[256] = {
     [0x02] = {"LD BC,A", 1, 8, false, ld_bc_a},
     [0x03] = {"INC BC", 1, 8, true, not_implemented},
     [0x04] = {"INC B", 1, 4, true, not_implemented},
-    [0x05] = {"DEC B", 1, 4, true, not_implemented},
-    [0x06] = {"LD B,n8", 2, 8, true, not_implemented},
+    [0x05] = {"DEC B", 1, 4, true, dec_b},
+    [0x06] = {"LD B,n8", 2, 8, true, ld_b_n8},
     [0x07] = {"RLCA", 1, 4, true, not_implemented},
     [0x08] = {"LD a16,SP", 3, 20, false, not_implemented},
     [0x09] = {"ADD HL,BC", 1, 8, true, not_implemented},
@@ -79,7 +122,7 @@ struct Instruction unprefixed_instructions[256] = {
     [0x0B] = {"DEC BC", 1, 8, true, not_implemented},
     [0x0C] = {"INC C", 1, 4, true, inc_c},
     [0x0D] = {"DEC C", 1, 4, true, not_implemented},
-    [0x0E] = {"LD C,n8", 2, 8, true, not_implemented},
+    [0x0E] = {"LD C,n8", 2, 8, true, ld_c_n8},
     [0x0F] = {"RRCA", 1, 4, true, not_implemented},
     [0x10] = {"STOP n8", 2, 4, true, not_implemented},
     [0x11] = {"LD DE,n16", 3, 12, true, not_implemented},
@@ -97,8 +140,8 @@ struct Instruction unprefixed_instructions[256] = {
     [0x1D] = {"DEC E", 1, 4, true, not_implemented},
     [0x1E] = {"LD E,n8", 2, 8, true, not_implemented},
     [0x1F] = {"RRA", 1, 4, true, not_implemented},
-    [0x20] = {"JR NZ,e8", 2, 12, true, not_implemented},
-    [0x21] = {"LD HL,n16", 3, 12, true, not_implemented},
+    [0x20] = {"JR NZ,e8", 2, 12, true, jr_nz_e8},
+    [0x21] = {"LD HL,n16", 3, 12, true, ld_hl_n16},
     [0x22] = {"LD HL,A", 1, 8, false, not_implemented},
     [0x23] = {"INC HL", 1, 8, true, not_implemented},
     [0x24] = {"INC H", 1, 4, true, not_implemented},
@@ -115,7 +158,7 @@ struct Instruction unprefixed_instructions[256] = {
     [0x2F] = {"CPL", 1, 4, true, not_implemented},
     [0x30] = {"JR NC,e8", 2, 12, true, not_implemented},
     [0x31] = {"LD SP,n16", 3, 12, true, not_implemented},
-    [0x32] = {"LD HL,A", 1, 8, false, not_implemented},
+    [0x32] = {"LD HLD,A", 1, 8, false, ld_hld_a},
     [0x33] = {"INC SP", 1, 8, true, not_implemented},
     [0x34] = {"INC HL", 1, 12, false, not_implemented},
     [0x35] = {"DEC HL", 1, 12, false, not_implemented},
