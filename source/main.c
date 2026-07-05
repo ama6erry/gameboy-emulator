@@ -5,11 +5,16 @@
 #include "display.h"
 #include <SDL.h>
 
+int running;
+int awaiting;
+int stepEnabled;
+
 int main(int argc, char **argv){
     char *fileDest = "test_roms/tetris.gb";
-    int running = 1;
-    int awaiting = 1;
-    int stepEnabled = 0;
+    running = 1;
+    awaiting = 1;
+    stepEnabled = 0;
+    SDL_KeyboardEvent key;
     
     init_cpu();
     load_rom(fileDest);
@@ -19,6 +24,16 @@ int main(int argc, char **argv){
     while(running){
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) running = 0;
+            else if (event.type == SDL_KEYDOWN) {
+                key = event.key;
+                switch(key.keysym.scancode){
+                    case SDL_SCANCODE_S:
+                        stepEnabled = !stepEnabled;
+                        break;
+                    default:
+                        break;
+                }
+            }
         }
         cpu_step();
         update_debug_window();

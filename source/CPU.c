@@ -1,6 +1,8 @@
 #include "hardware.h"
 #include "utils.h"
 #include "memory.h"
+#include "main.h"
+#include "interrupt.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -12,6 +14,7 @@ union Register register_DE;
 union Register register_HL;
 union Register sp;
 WORD pc;
+int IME = 0;
 
 #define SET_FLAG(x) (register_AF.lo |= (x))
 #define CLEAR_FLAG(x) (register_AF.lo &= ~(x))
@@ -28,6 +31,7 @@ struct Instruction {
 
 void not_implemented() {
     LOG_E("This instruction is not yet implemented");
+    stepEnabled = 1;
 }
 
 BYTE inc(BYTE value){
@@ -75,9 +79,11 @@ void ld_b_n8(BYTE operand) { register_BC.hi = operand; pc += 1; }
 // 0x0C
 void inc_c(){ register_BC.lo = inc(register_BC.lo); }
 
+// 0x0D
+void dec_c(){ register_BC.lo = dec(register_BC.lo); }
+
 // 0x0E
 void ld_c_n8(BYTE operand){ register_BC.lo = operand; pc += 1; }
-
 
 // 0x20
 void jr_nz_e8(BYTE operand){
@@ -95,6 +101,9 @@ void ld_hl_n16(WORD operand){ register_HL.full = operand; pc += 2; }
 // 0x32
 void ld_hld_a() { write_byte(register_HL.full, register_AF.hi); register_HL.full -= 1; }
 
+// 0x3E
+void ld_a_n8(BYTE operand) { register_AF.hi = operand; pc += 1; }
+
 // 0xAF
 void xor_a_a(){ 
     register_AF.hi = register_AF.hi ^ register_AF.hi; 
@@ -106,6 +115,17 @@ void xor_a_a(){
 
 // 0xC3
 void jp_a16(WORD operand){ pc = operand; }
+
+// 0xE0
+void ldh_a8_a(BYTE operand){ write_byte(0xFF00 + operand, register_AF.hi); pc += 1; }
+
+// 0xF0
+void ldh_a_a8(BYTE operand){ register_AF.hi = read_byte(0xFF00 + operand); pc += 1; }
+
+// 0xF3
+void di(){
+    IME = 0;
+}
 
 struct Instruction unprefixed_instructions[256] = {
     [0x00] = {"NOP", 1, 4, true, nop},
@@ -121,7 +141,7 @@ struct Instruction unprefixed_instructions[256] = {
     [0x0A] = {"LD A,BC", 1, 8, false, not_implemented},
     [0x0B] = {"DEC BC", 1, 8, true, not_implemented},
     [0x0C] = {"INC C", 1, 4, true, inc_c},
-    [0x0D] = {"DEC C", 1, 4, true, not_implemented},
+    [0x0D] = {"DEC C", 1, 4, true, dec_c},
     [0x0E] = {"LD C,n8", 2, 8, true, ld_c_n8},
     [0x0F] = {"RRCA", 1, 4, true, not_implemented},
     [0x10] = {"STOP n8", 2, 4, true, not_implemented},
@@ -170,7 +190,7 @@ struct Instruction unprefixed_instructions[256] = {
     [0x3B] = {"DEC SP", 1, 8, true, not_implemented},
     [0x3C] = {"INC A", 1, 4, true, not_implemented},
     [0x3D] = {"DEC A", 1, 4, true, not_implemented},
-    [0x3E] = {"LD A,n8", 2, 8, true, not_implemented},
+    [0x3E] = {"LD A,n8", 2, 8, true, ld_a_n8},
     [0x3F] = {"CCF", 1, 4, true, not_implemented},
     [0x40] = {"LD B,B", 1, 4, true, not_implemented},
     [0x41] = {"LD B,C", 1, 4, true, not_implemented},
@@ -332,7 +352,7 @@ struct Instruction unprefixed_instructions[256] = {
     [0xDD] = {"ILLEGAL_DD", 1, 4, true, not_implemented},
     [0xDE] = {"SBC A,n8", 2, 8, true, not_implemented},
     [0xDF] = {"RST $18", 1, 16, true, not_implemented},
-    [0xE0] = {"LDH a8,A", 2, 12, false, not_implemented},
+    [0xE0] = {"LDH a8,A", 2, 12, false, ldh_a8_a},
     [0xE1] = {"POP HL", 1, 12, true, not_implemented},
     [0xE2] = {"LDH C,A", 1, 8, false, not_implemented},
     [0xE3] = {"ILLEGAL_E3", 1, 4, true, not_implemented},
@@ -348,10 +368,10 @@ struct Instruction unprefixed_instructions[256] = {
     [0xED] = {"ILLEGAL_ED", 1, 4, true, not_implemented},
     [0xEE] = {"XOR A,n8", 2, 8, true, not_implemented},
     [0xEF] = {"RST $28", 1, 16, true, not_implemented},
-    [0xF0] = {"LDH A,a8", 2, 12, false, not_implemented},
+    [0xF0] = {"LDH A,a8", 2, 12, false, ldh_a_a8},
     [0xF1] = {"POP AF", 1, 12, true, not_implemented},
     [0xF2] = {"LDH A,C", 1, 8, false, not_implemented},
-    [0xF3] = {"DI", 1, 4, true, not_implemented},
+    [0xF3] = {"DI", 1, 4, true, di},
     [0xF4] = {"ILLEGAL_F4", 1, 4, true, not_implemented},
     [0xF5] = {"PUSH AF", 1, 16, true, not_implemented},
     [0xF6] = {"OR A,n8", 2, 8, true, not_implemented},
@@ -626,8 +646,6 @@ struct Instruction prefixed_instructions[256] = {
 };
 
 void init_cpu(){
-    BYTE Cartridge[0x200000];
-
     register_AF.full = 0x01B0;
     register_BC.full = 0x0013;
     register_DE.full = 0x00D8;
@@ -637,40 +655,42 @@ void init_cpu(){
 
     pc = 0x100;
  
-    Cartridge[0xFF05] = 0x00 ;
-    Cartridge[0xFF06] = 0x00 ;
-    Cartridge[0xFF07] = 0x00 ;
-    Cartridge[0xFF10] = 0x80 ;
-    Cartridge[0xFF11] = 0xBF ;
-    Cartridge[0xFF12] = 0xF3 ;
-    Cartridge[0xFF14] = 0xBF ;
-    Cartridge[0xFF16] = 0x3F ;
-    Cartridge[0xFF17] = 0x00 ;
-    Cartridge[0xFF19] = 0xBF ;
-    Cartridge[0xFF1A] = 0x7F ;
-    Cartridge[0xFF1B] = 0xFF ;
-    Cartridge[0xFF1C] = 0x9F ;
-    Cartridge[0xFF1E] = 0xBF ;
-    Cartridge[0xFF20] = 0xFF ;
-    Cartridge[0xFF21] = 0x00 ;
-    Cartridge[0xFF22] = 0x00 ;
-    Cartridge[0xFF23] = 0xBF ;
-    Cartridge[0xFF24] = 0x77 ;
-    Cartridge[0xFF25] = 0xF3 ;
-    Cartridge[0xFF26] = 0xF1 ;
-    Cartridge[0xFF40] = 0x91 ;
-    Cartridge[0xFF42] = 0x00 ;
-    Cartridge[0xFF43] = 0x00 ;
-    Cartridge[0xFF45] = 0x00 ;
-    Cartridge[0xFF47] = 0xFC ;
-    Cartridge[0xFF48] = 0xFF ;
-    Cartridge[0xFF49] = 0xFF ;
-    Cartridge[0xFF4A] = 0x00 ;
-    Cartridge[0xFF4B] = 0x00 ;
-    Cartridge[0xFFFF] = 0x00 ; 
+    write_byte(0xFF05, 0x00);
+    write_byte(0xFF06, 0x00);
+    write_byte(0xFF07, 0x00);
+    write_byte(0xFF10, 0x80);
+    write_byte(0xFF11, 0xBF);
+    write_byte(0xFF12, 0xF3);
+    write_byte(0xFF14, 0xBF);
+    write_byte(0xFF16, 0x3F);
+    write_byte(0xFF17, 0x00);
+    write_byte(0xFF19, 0xBF);
+    write_byte(0xFF1A, 0x7F);
+    write_byte(0xFF1B, 0xFF);
+    write_byte(0xFF1C, 0x9F);
+    write_byte(0xFF1E, 0xBF);
+    write_byte(0xFF20, 0xFF);
+    write_byte(0xFF21, 0x00);
+    write_byte(0xFF22, 0x00);
+    write_byte(0xFF23, 0xBF);
+    write_byte(0xFF24, 0x77);
+    write_byte(0xFF25, 0xF3);
+    write_byte(0xFF26, 0xF1);
+    write_byte(0xFF40, 0x91);
+    write_byte(0xFF42, 0x00);
+    write_byte(0xFF43, 0x00);
+    write_byte(0xFF45, 0x00);
+    write_byte(0xFF47, 0xFC);
+    write_byte(0xFF48, 0xFF);
+    write_byte(0xFF49, 0xFF);
+    write_byte(0xFF4A, 0x00);
+    write_byte(0xFF4B, 0x00);
+    write_byte(0xFFFF, 0x00);
 }
 
 void cpu_step(){
+    //if (pc == 0x0214) {stepEnabled = 1;}
+    LOG_I("$FF44 = %02X", read_byte(0xFF44));
     BYTE instruction = read_byte(pc);
     pc += 1;
     WORD operand = 0;
@@ -681,7 +701,9 @@ void cpu_step(){
         instruction = read_byte(pc);
     }    
     
-
+    if(IME){
+        handle_interrupt();
+    }
 
     if(!prefixed){
         if(unprefixed_instructions[instruction].bytes == 2){

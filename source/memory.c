@@ -1,17 +1,18 @@
 #include "memory.h"
 #include "utils.h"
+#include "main.h"
+#include "interrupt.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
-BYTE Cartridge[0x8000];
+BYTE Cartridge[0x8000] = {0};
 BYTE vram[0x9fff - 0x8000];
 BYTE eram[0xbfff - 0xa000];
 BYTE wram[0xdfff - 0xc000];
 BYTE oam[0xfe9f - 0xfe00];
 BYTE io[0xff7f - 0xff00];
 BYTE hram[0xfffe - 0xff80];
-BYTE ie;
 
 void load_rom(const char *name){
     FILE* file;
@@ -65,32 +66,40 @@ BYTE read_byte(WORD address){
         return oam[address - 0xfe00];
     } else if(address < 0xff80){
         return io[address - 0xff00];
-    } else if(address <= 0xffff){
+    } else if(address <= 0xfffe){
         return hram[address - 0xff80];
+    } else if(address == 0xffff){
+        return IE;
+    } else {
+        LOG_W("Attempted read at unaccessible address : $%04X", address);
+        stepEnabled = 1;
+        return 0x00;
     }
 }
 
 void write_byte(WORD address, BYTE value){
-    if(address >= 0xa000 && address <= 0xbfff){
+    if(address >= 0xa000 && address <= 0xbfff)
         eram[address - 0xa000] = value;
-    } else if(address >= 0x8000 && address <= 0x9fff){
+    else if(address >= 0x8000 && address <= 0x9fff)
         vram[address - 0x8000] = value;
-    }
-
     if(address >= 0xc000 && address <= 0xdfff)
 		wram[address - 0xc000] = value;
-	
 	else if(address >= 0xe000 && address <= 0xfdff)
 		wram[address - 0xe000] = value;
-
     else if(address >= 0xfe00 && address <= 0xfeff)
 		oam[address - 0xfe00] = value;
-	
+	else if(address >= 0xFF00 && address <= 0xFF7F) 
+        io_write(address, value);
 	else if(address >= 0xff80 && address <= 0xfffe)
 		hram[address - 0xff80] = value;
-
+    else if(address == 0xFFFF) 
+        IE = value;
     else {
-        LOG_I("Address written to unsupported area : 0x%x", address);
-        exit(0);
+        LOG_W("Memory written to unsupported address : $%04X", address);
+        stepEnabled = 1;
     }
+}
+
+void io_write(WORD address, BYTE value){
+    if (address == 0xFF44) io[address - 0xff00] = 0; //LCD Y COORD
 }

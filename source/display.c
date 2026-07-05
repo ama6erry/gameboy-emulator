@@ -2,6 +2,7 @@
 #include <SDL_ttf.h>
 #include "CPU.h"
 #include "utils.h"
+#include "main.h"
 #include <stdio.h>
 
 SDL_Window* debugWindow;
@@ -20,6 +21,7 @@ void init_debug_display(){
 }
 
 void update_debug_window(){
+    if(!stepEnabled) return;
     unsigned short AF = register_AF.full;
     unsigned short BC = register_BC.full;
     unsigned short DE = register_DE.full;
